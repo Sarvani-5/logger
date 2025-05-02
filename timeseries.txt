@@ -1,0 +1,136 @@
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+import matplotlib.pyplot as plt
+from datetime import timedelta
+
+df = pd.read_csv('Weather_Dataset.csv')
+
+print(f"Data shape: {df.shape}")
+
+df['Date/Time'] = pd.to_datetime(df['Date/Time'])
+df = df.sort_values('Date/Time').reset_index(drop=True)
+
+df = df.fillna(method='ffill')
+
+target_col = 'Temp_C'
+feature_cols = ['Dew Point Temp_C', 'Rel Hum_%', 'Wind Speed_km/h', 'Visibility_km', 'Press_kPa']
+features = df[feature_cols]
+target = df[target_col]
+
+scaler_X = MinMaxScaler()
+X_scaled = scaler_X.fit_transform(features)
+
+scaler_y = MinMaxScaler()
+y_scaled = scaler_y.fit_transform(target.values.reshape(-1, 1))
+
+seq_len = 24
+X_seq, y_seq = [], []
+
+for i in range(len(X_scaled) - seq_len):
+    X_seq.append(X_scaled[i:i+seq_len])
+    y_seq.append(y_scaled[i+seq_len])
+
+X_seq, y_seq = np.array(X_seq), np.array(y_seq)
+print(f"Sequence shape: X={X_seq.shape}, y={y_seq.shape}")
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_seq, y_seq, test_size=0.2, shuffle=False
+)
+
+model = Sequential([
+    LSTM(64, input_shape=(X_train.shape[1], X_train.shape[2])),
+    Dropout(0.2),
+    Dense(1)
+])
+
+model.compile(optimizer='adam', loss='mse')
+model.fit(X_train, y_train, epochs=10, batch_size=32, verbose=1)
+
+y_pred = model.predict(X_test)
+
+y_pred_inv = scaler_y.inverse_transform(y_pred)
+y_test_inv = scaler_y.inverse_transform(y_test)
+
+mae = mean_absolute_error(y_test_inv, y_pred_inv)
+mse = mean_squared_error(y_test_inv, y_pred_inv)
+rmse = np.sqrt(mse)
+r2 = r2_score(y_test_inv, y_pred_inv)
+
+print(f"Performance Metrics:")
+print(f"MAE: {mae:.2f}°C")
+print(f"RMSE: {rmse:.2f}°C")
+print(f"R²: {r2:.2f}")
+
+plt.figure(figsize=(10, 6))
+plt.plot(y_test_inv[:100], label='Actual Temperature')
+plt.plot(y_pred_inv[:100], label='Predicted Temperature')
+plt.title("Temperature Forecast (First 100 Predictions)")
+plt.xlabel("Data Point Index")
+plt.ylabel("Temperature (°C)")
+plt.legend()
+plt.show()
+
+last_sequence = X_scaled[-seq_len:].reshape(1, seq_len, X_scaled.shape[1])
+
+future_days = 30
+future_predictions = []
+
+current_sequence = last_sequence.copy()
+
+future_dates = []
+last_date = df['Date/Time'].iloc[-1]
+
+print("Predicting temperatures for the next 30 days...")
+
+for i in range(future_days):
+    next_pred = model.predict(current_sequence)
+    future_predictions.append(next_pred[0, 0])
+    
+    last_features = X_scaled[-1:].copy()
+    
+    new_point = last_features.copy()
+    
+    current_sequence = np.append(current_sequence[:, 1:, :], 
+                              np.expand_dims(new_point, axis=1), 
+                              axis=1)
+    
+    next_date = last_date + timedelta(days=i+1)
+    future_dates.append(next_date)
+
+future_pred_inv = scaler_y.inverse_transform(np.array(future_predictions).reshape(-1, 1))
+
+future_df = pd.DataFrame({
+    'Date': future_dates,
+    'Predicted_Temp_C': future_pred_inv.flatten()
+})
+
+print("\nFuture temperature predictions for the next 30 days:")
+print(future_df)
+
+plt.figure(figsize=(12, 6))
+
+days_to_show = min(30, len(df))
+plt.plot(df['Date/Time'].iloc[-days_to_show:], 
+         df[target_col].iloc[-days_to_show:], 
+         'b-', label='Historical Temperature')
+
+plt.plot(future_df['Date'], future_df['Predicted_Temp_C'], 
+         'r--', label='Predicted Temperature')
+
+plt.title("Temperature Forecast - Next 30 Days")
+plt.xlabel("Date")
+plt.ylabel("Temperature (°C)")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.legend()
+plt.grid(True)
+plt.show()
+
+future_df.to_csv('temperature_forecast_30days.csv', index=False)
+print("Future predictions saved to 'temperature_forecast_30days.csv'")

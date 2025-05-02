@@ -1,0 +1,44 @@
+import re
+import string
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_score, classification_report
+from sklearn.svm import LinearSVC
+
+df = pd.read_csv("spam.csv", encoding="latin1")
+print(df.head())
+
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r'\d+', '', text)
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    return text.strip()
+
+df['clean_text'] = df['v2'].apply(clean_text)
+print(df['clean_text'])
+X = df['clean_text']
+y = df['v1']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+vectorizer = TfidfVectorizer(stop_words='english')
+X_train_tfidf = vectorizer.fit_transform(X_train)
+X_test_tfidf = vectorizer.transform(X_test)
+
+model = LinearSVC()
+model.fit(X_train_tfidf, y_train)
+y_pred = model.predict(X_test_tfidf)
+
+print(classification_report(y_test, y_pred))
+print(accuracy_score(y_test, y_pred))
+
+plt.figure(figsize=(10,8))
+cmsv = confusion_matrix(y_test, y_pred, labels=["ham", "spam"])
+ConfusionMatrixDisplay(confusion_matrix=cmsv, display_labels=["ham", "spam"]).plot(cmap=plt.cm.Greens)
+plt.show()
+
+custom_msg = "Free entry in 2 a wkly comp to win FA Cup final tkts 21st May 2005. Text FA to 87121 to receive entry question(std txt rate)T&C's apply 08452810075over18's"
+custom_msg_tfidf = vectorizer.transform([custom_msg])
+prediction = model.predict(custom_msg_tfidf)
+print(custom_msg)
+print(prediction[0])

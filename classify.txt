@@ -1,0 +1,172 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler,LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from imblearn.over_sampling import SMOTE
+from sklearn.metrics import confusion_matrix,classification_report,accuracy_score,precision_score,recall_score,f1_score,roc_curve,auc
+
+df = pd.read_csv("D:\\DS_Model\\stroke.csv")
+df.drop(columns=["id"], inplace=True)
+
+num_cols = df.select_dtypes(include=["number"]).columns
+"""for col in num_cols:
+    plt.figure(figsize=(12,8))
+    sns.histplot(df[col],kde=True,bins=20)
+    plt.xlabel(col)
+    plt.ylabel("frequency")
+    plt.title(f"Histogram of {col}")
+    plt.show()
+
+plt.figure(figsize=(12,8))
+sns.boxplot(data=df[num_cols])
+plt.title("Boxplot")
+plt.xticks(rotation=45)
+plt.show()
+
+plt.figure(figsize=(12,8))
+sns.pairplot(data=df[num_cols],hue="stroke")
+plt.title("Pairplot")
+plt.xticks(rotation=45)
+plt.show()
+
+plt.figure(figsize=(12,8))
+sns.violinplot(data=df[num_cols])
+plt.title("Violinplot")
+plt.xticks(rotation=45)
+plt.show()
+
+for x in num_cols:
+    for y in num_cols:
+        if x!=y:
+            plt.figure(figsize=(12,8))
+            sns.scatterplot(data=df,x=df[x],y=df[y],alpha=0.7,hue="stroke")
+            plt.title(f"Scatterplot of {x},{y}")
+            plt.show()
+"""
+
+print("\nDataset description\n")
+print(df.head())
+
+print("\nDataset statistics\n")
+print(df.describe())
+
+col = ["age","bmi","avg_glucose_level"]
+print("\nOther statistics\n")
+for c in col:
+    print(f"Skewness of {c} is {df[c].skew()}")
+    print(f"Kurtosis of {c} is {df[c].kurtosis()}")
+    print(f"IQR range of {c} is {df[c].quantile(0.75)-df[c].quantile(0.25)}")
+
+print("\nMissing values in dataset\n")
+print(df.isnull().sum())
+print("\nAfter Handling Missing values\n")
+df["bmi"].fillna(df["bmi"].mean(),inplace=True)
+print(df.isnull().sum())
+
+print("\nBefore Handling catergorical columns")
+print(df.head())
+cat_col = df.select_dtypes(include=["object"]).columns
+encoder = LabelEncoder()
+for col in cat_col:
+    df[col] = encoder.fit_transform(df[col])
+print("\nAfter Handling catergorical columns")
+print(df.head())
+
+print("\nBefore Feature Scaling")
+print(df.head())
+num_cols = ["age","bmi","avg_glucose_level"]
+scaler = StandardScaler()
+df[num_cols] = scaler.fit_transform(df[num_cols])
+print("\nAfter Feature Scaling")
+print(df.head())
+
+plt.figure(figsize=(18,16))
+sns.heatmap(df.corr(),cmap="coolwarm",annot=True,fmt=".2f")
+plt.title("Correlation Heatmap")
+plt.show()
+
+plt.figure(figsize=(10,8))
+sns.countplot(x=df["stroke"])
+plt.xlabel("Stroke")
+plt.ylabel("count")
+plt.title("Before Class balancing")
+plt.show()
+
+X = df.drop(columns=["stroke"])
+y = df["stroke"]
+smote = SMOTE(random_state=42,sampling_strategy="not majority")
+X_re,y_re = smote.fit_resample(X,y)
+df_re = pd.DataFrame(X_re,columns=X.columns)
+df_re["stroke"] = y_re
+
+plt.figure(figsize=(10,8))
+sns.countplot(x=df_re["stroke"])
+plt.xlabel("Stroke")
+plt.ylabel("count")
+plt.title("After Class balancing")
+plt.show()
+
+X = df_re.drop(columns=["stroke"])
+y = df_re["stroke"]
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,random_state=42)
+models = {
+    "Random Forest":RandomForestClassifier(random_state=42),
+    "Decision Tree":DecisionTreeClassifier(),
+    "Support Vector Machine":SVC(probability=True),
+    "Logistic Regression":LogisticRegression(max_iter=1000),
+    "KNeighbors":KNeighborsClassifier()
+}
+result=[]
+for name,model in models.items():
+    model.fit(X_train,y_train)
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)[:,1]
+    print(f"Classification report of {name} {classification_report(y_test,y_pred)}")
+    plt.figure(figsize=(18,16))
+    sns.heatmap(confusion_matrix(y_test,y_pred),cmap="coolwarm",annot=True,fmt=".2f")
+    plt.title(f"Confusion matrix of {name}")
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.show()
+    fpr,tpr,_=roc_curve(y_test,y_proba)
+    plt.figure(figsize=(10,8))
+    plt.scatter(fpr,tpr,label=f"{auc(fpr,tpr):.2f}")
+    plt.plot([0,1],[0,1],linestyle="--")
+    plt.title(f"ROC CURVE OF {name}")
+    plt.xlabel("FPR")
+    plt.ylabel("TPR")
+    plt.legend()
+    plt.show()
+    result.append({
+        "Name" : name,
+        "Accuracy":accuracy_score(y_test,y_pred),
+        "Precision":precision_score(y_test,y_pred),
+        "Recall":recall_score(y_test,y_pred),
+        "F1 Score":f1_score(y_test,y_pred)
+    })   
+
+result_df=pd.DataFrame(result)
+print("\nModel Comparison\n")
+print(result_df) 
+
+'''sample_patient = X_test.iloc[0:1] 
+
+# Make prediction
+prediction = model.predict(sample_patient)[0]
+probability = model.predict_proba(sample_patient)[0][1]
+
+# Display the sample data and prediction
+print("\n----- SAMPLE PATIENT DATA -----")
+print(sample_patient)
+
+print("\n----- PREDICTION RESULT -----")
+print(f"Stroke Prediction: {'Yes' if prediction == 1 else 'No'}")
+print(f"Probability of stroke: {probability:.4f}")
+'''

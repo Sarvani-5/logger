@@ -1,0 +1,162 @@
+import nltk
+from nltk.tokenize import word_tokenize
+import string
+import pandas as pd
+from textblob import TextBlob
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import SVC
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics.pairwise import cosine_similarity
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer,PorterStemmer
+
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger_eng')
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+
+df = pd.read_csv('spam.csv', encoding='latin1')
+print(df.head())
+print(df.describe())
+
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('english'))
+#stemmer = PorterStemmer()
+
+df['tokens'] = df['v2'].apply(lambda text: [
+    lemmatizer.lemmatize(word)
+    #stemmer.stem()
+    for word in word_tokenize(text.lower())
+    if word.isalpha() and word not in stop_words and word not in string.punctuation
+])
+print(df[['tokens']])
+
+df['parts'] = df['tokens'].apply(nltk.pos_tag)
+print(df[['parts']])
+
+df['sentiment'] = df['v2'].apply(lambda text: TextBlob(text).sentiment.polarity)
+print(df[['v2', 'sentiment']])
+
+all_words = ' '.join([' '.join(token) for token in df['tokens']])
+wordcloud = WordCloud(width=400, height=200, background_color='white').generate(all_words)
+
+plt.figure(figsize=(5, 6))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis('off')
+plt.title('Word Cloud')
+plt.show()
+
+df['clean_text'] = df['tokens'].apply(lambda tokens: ' '.join(tokens))
+
+X = df['clean_text']
+y = df['v1']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+vectorizer = TfidfVectorizer()
+X_train_tfidf = vectorizer.fit_transform(X_train)
+X_test_tfidf = vectorizer.transform(X_test)
+
+nb_model = MultinomialNB()
+nb_model.fit(X_train_tfidf, y_train)
+nb_pred = nb_model.predict(X_test_tfidf)
+
+print("\n--- Naive Bayes Results ---")
+print("Classification report:", classification_report(y_test, nb_pred))
+print("Accuracy:", accuracy_score(y_test, nb_pred))
+
+plt.figure(figsize=(8, 6))
+cm_nb = confusion_matrix(y_test, nb_pred, labels=['ham', 'spam'])
+disp_nb = ConfusionMatrixDisplay(confusion_matrix=cm_nb, display_labels=['ham', 'spam'])
+disp_nb.plot(cmap=plt.cm.Blues)
+plt.title('Naive Bayes Confusion Matrix')
+plt.show()
+
+svc_model = SVC(kernel='linear', probability=True)
+svc_model.fit(X_train_tfidf, y_train)
+svc_pred = svc_model.predict(X_test_tfidf)
+
+print("\n--- Support Vector Classifier Results ---")
+print("Classification report:", classification_report(y_test, svc_pred))
+print("Accuracy:", accuracy_score(y_test, svc_pred))
+
+plt.figure(figsize=(8, 6))
+cm_svc = confusion_matrix(y_test, svc_pred, labels=['ham', 'spam'])
+disp_svc = ConfusionMatrixDisplay(confusion_matrix=cm_svc, display_labels=['ham', 'spam'])
+disp_svc.plot(cmap=plt.cm.Greens)
+plt.title('SVC Confusion Matrix')
+plt.show()
+
+print("\n--- Model Comparison ---")
+print(f"Naive Bayes Accuracy: {accuracy_score(y_test, nb_pred):.4f}")
+print(f"SVC Accuracy: {accuracy_score(y_test, svc_pred):.4f}")
+
+custom_msg = ['Congratulations! You have won a free ticket and it is only available for a limited time']
+custom_msg_tfidf = vectorizer.transform(custom_msg)
+
+nb_custom_pred = nb_model.predict(custom_msg_tfidf)
+svc_custom_pred = svc_model.predict(custom_msg_tfidf)
+
+print("\nCustom Message:", custom_msg[0])
+print("Naive Bayes Prediction:", nb_custom_pred[0])
+print("SVC Prediction:", svc_custom_pred[0])
+
+nb_prob = nb_model.predict_proba(custom_msg_tfidf)
+svc_prob = svc_model.predict_proba(custom_msg_tfidf)
+
+print(f"NB Spam Probability: {nb_prob[0][1]:.4f}")
+print(f"SVC Spam Probability: {svc_prob[0][1]:.4f}")
+
+with open('sample3.txt', 'r', encoding='utf-8') as file:
+    text1 = file.read()
+with open('sample2.txt', 'r', encoding='utf-8') as file:
+    text2 = file.read()
+
+tfidf_matrix = vectorizer.fit_transform([text1, text2])
+similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])
+
+print("\nThe cosine similarity between 2 documents are", similarity[0][0])
+print(f"The cosine similarity between 2 documents are {similarity[0][0]:.2f}")
+
+with open('short_story.txt', 'r', encoding='utf-8') as file:
+    text3 = file.read()
+with open('short_story2.txt', 'r', encoding='utf-8') as file:
+    text4 = file.read()
+
+tokens_text3 = [
+    lemmatizer.lemmatize(word)
+    for word in word_tokenize(text3.lower())
+    if word.isalpha() and word not in stop_words and word not in string.punctuation
+]
+print("Tokens of short story 1:", tokens_text3)
+
+tokens_text4 = [
+    lemmatizer.lemmatize(word)
+    for word in word_tokenize(text4.lower())
+    if word.isalpha() and word not in stop_words and word not in string.punctuation
+]
+print("Tokens of short story 2:", tokens_text4)
+
+pos_values3 = nltk.pos_tag(tokens_text3)
+print("POS tagging:", pos_values3)
+
+sentiment_values3 = TextBlob(text3).sentiment.polarity
+print("Sentiment values:", sentiment_values3)
+
+word_cloud3 = WordCloud(width=400, height=200, background_color='white').generate(text3)
+plt.figure(figsize=(5, 6))
+plt.imshow(word_cloud3, interpolation='bilinear')
+plt.axis('off')
+plt.title('Word Cloud of a short story')
+plt.show()
+
+print("\nSimilar words\n")
+tokens_text3_set = set(tokens_text3)
+tokens_text4_set = set(tokens_text4)
+common_words = tokens_text3_set.intersection(tokens_text4_set)
+for word in common_words:
+    print(word, end='\t')

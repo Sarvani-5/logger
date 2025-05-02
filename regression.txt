@@ -1,0 +1,75 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error,mean_absolute_error,r2_score
+
+file_path="insurance.csv"
+df=pd.read_csv(file_path)
+
+
+print("Dataset Description\n", df.head())
+print("\nDataset Statistics summary\n", df.describe())
+
+plt.figure(figsize=(8,6))
+sns.histplot(df["charges"], bins=20, kde=True)
+plt.xlabel("charges")
+plt.ylabel("Frequency")
+plt.title("Histogram")
+plt.show()
+
+plt.figure(figsize=(8,6))
+sns.boxplot(x=df["charges"])
+plt.title("Boxplot")
+plt.show()
+
+print("\nMissing values\n", df.isnull().sum())
+df["bmi"].fillna(df["bmi"].mean(), inplace=True)
+print("\nData after Handling missing values\n", df.isnull().sum())
+
+print("\nHandling Categorical columns\n",df.head())
+encoder = LabelEncoder()
+cat_col = ["sex","smoker","region"]
+for col in cat_col:
+    df[col] = encoder.fit_transform(df[col])
+print(df.head())
+
+corr_mat = df.corr()
+plt.figure(figsize=(8,6))
+sns.heatmap(corr_mat, cmap="coolwarm", fmt=".2f", annot=True)
+plt.title("Correlations of variables")
+plt.show()
+
+X = df.drop(columns="charges")
+y = df["charges"]
+X_train,X_test,y_train,y_test = train_test_split(X,y,test_size=0.2,random_state=42)
+
+model = LinearRegression()
+model.fit(X_train,y_train)
+y_pred = model.predict(X_test)
+
+r_indx = np.random.randint(0,len(X_test))
+data = X_test.iloc[r_indx]
+a_charges = y_test.iloc[r_indx]
+p_charges = model.predict([data])[0]
+
+print("Actual charges",f'{a_charges:.2f}')
+print("Predicted charges",f'{p_charges:.2f}')
+print("Difference in charges",f'{abs(a_charges-p_charges):.2f}')
+
+print("Mean Squared error:",mean_squared_error(y_test,y_pred))
+print("Mean Absolute Error:",mean_absolute_error(y_test,y_pred))
+print("R2 Score",r2_score(y_test,y_pred))
+
+plt.figure(figsize=(8,6))
+plt.scatter(y_test,y_pred,color="blue",label="Actual vs Predicted")
+plt.plot(y_test,y_test,color="red",label="Best Fit Line",linewidth=2)
+plt.xlabel('Actual Prices')
+plt.ylabel('Predicted Prices')
+plt.title('Actual vs Predicted (Linear Regression)')
+plt.legend()
+plt.show()
+
